@@ -1,0 +1,428 @@
+import { useState, useMemo } from "react";
+import { userService } from "../../services";
+import CustomSelect from "../ui/CustomSelect";
+
+export default function AdminUserAddView({ onBack, onUserCreated, usersList = [] }) {
+  const [formData, setFormData] = useState({
+    name: "",
+    email: "",
+    role: "siswa",
+    kelas: "Kelas 4A",
+    password: "",
+    passwordConfirmation: "",
+  });
+  const [showPassword, setShowPassword] = useState(false);
+  const [showPasswordConfirm, setShowPasswordConfirm] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const [createdResult, setCreatedResult] = useState(null);
+  const [copied, setCopied] = useState(false);
+
+  // Peta wali kelas guru yang sudah aktif bertugas
+  const existingWaliMap = useMemo(() => {
+    const map = {};
+    (usersList || []).forEach((u) => {
+      if (u.role === "guru" && u.kelas) {
+        const clean = u.kelas.replace(/^Kelas\s+/i, "").trim().toUpperCase();
+        if (clean && !["NONE", "TIDAK ADA", "BELUM DITUGASKAN", "-"].includes(clean)) {
+          map[clean] = u.name;
+          map[`Kelas ${clean}`] = u.name;
+        }
+      }
+    });
+    return map;
+  }, [usersList]);
+
+  const handleRoleChange = (newRole) => {
+    setFormData((prev) => ({
+      ...prev,
+      role: newRole,
+      kelas: newRole === "admin" ? "" : newRole === "guru" ? "" : "Kelas 4A",
+    }));
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError("");
+
+    if (formData.password.length < 6) {
+      setError("Kata sandi minimal harus 6 karakter.");
+      return;
+    }
+
+    if (formData.password !== formData.passwordConfirmation) {
+      setError("Konfirmasi kata sandi tidak cocok dengan kata sandi.");
+      return;
+    }
+
+    setSubmitting(true);
+
+    try {
+      const payload = {
+        name: formData.name.trim(),
+        email: formData.email.trim(),
+        role: formData.role,
+        kelas: formData.role === "admin" ? null : (formData.kelas || null),
+        password: formData.password,
+        password_confirmation: formData.passwordConfirmation,
+      };
+
+      const res = await userService.createAdminUser(payload);
+
+      if (res.data?.status === "success") {
+        setCreatedResult({
+          user: res.data.data,
+          password: formData.password || res.data.data.generated_password || "Perpus12345",
+        });
+        if (onUserCreated) {
+          onUserCreated(res.data.data);
+        }
+      }
+    } catch (err) {
+      console.error("Error creating user:", err);
+      setError(
+        err.response?.data?.message ||
+          "Gagal menambahkan pengguna. Pastikan email belum terdaftar."
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleCopyPassword = () => {
+    if (createdResult?.password) {
+      navigator.clipboard.writeText(createdResult.password);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const handleResetForm = () => {
+    setFormData({
+      name: "",
+      email: "",
+      role: "siswa",
+      kelas: "Kelas 4A",
+      password: "",
+      passwordConfirmation: "",
+    });
+    setShowPassword(false);
+    setShowPasswordConfirm(false);
+    setCreatedResult(null);
+    setCopied(false);
+    setError("");
+  };
+
+  return (
+    <div className="max-w-xl mx-auto space-y-4">
+      {/* Breadcrumb & Navigation */}
+      <div className="flex items-center justify-between">
+        <button
+          type="button"
+          onClick={onBack}
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#5C6B64] hover:text-[#39BF81] transition-colors cursor-pointer group"
+        >
+          <svg
+            className="w-4 h-4 transition-transform group-hover:-translate-x-0.5"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+          </svg>
+          <span>Kembali ke Daftar Pengguna</span>
+        </button>
+
+        <span className="text-xs text-[#5C6B64]">Tambah Pengguna</span>
+      </div>
+
+      {/* Success Notification Card */}
+      {createdResult ? (
+        <div className="bg-white rounded-2xl border border-emerald-200 p-4 sm:p-5 shadow-xs space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-emerald-100 text-[#39BF81] flex items-center justify-center shrink-0">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <div>
+              <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider">Akun Pengguna Berhasil Dibuat</h2>
+              <p className="text-[11px] text-[#5C6B64]">Akun telah aktif di sistem perpustakaan</p>
+            </div>
+          </div>
+
+          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2 text-xs">
+            <div className="flex justify-between py-1 border-b border-slate-200/60">
+              <span className="text-slate-500 text-[11px]">Nama Lengkap</span>
+              <span className="font-bold text-slate-900">{createdResult.user.name}</span>
+            </div>
+            <div className="flex justify-between py-1 border-b border-slate-200/60">
+              <span className="text-slate-500 text-[11px]">Email</span>
+              <span className="font-mono text-slate-700">{createdResult.user.email}</span>
+            </div>
+            <div className="flex justify-between py-1 border-b border-slate-200/60">
+              <span className="text-slate-500 text-[11px]">Peran & Kelas</span>
+              <span className="font-medium text-slate-800">
+                {createdResult.user.role?.toUpperCase()} {createdResult.user.kelas ? `• ${createdResult.user.kelas}` : ""}
+              </span>
+            </div>
+            <div className="flex items-center justify-between pt-2">
+              <div>
+                <span className="text-slate-500 block text-[11px]">Kata Sandi Sementara:</span>
+                <code className="font-mono font-bold text-slate-900 text-xs bg-white px-2 py-0.5 rounded border border-slate-300">
+                  {createdResult.password}
+                </code>
+              </div>
+              <button
+                type="button"
+                onClick={handleCopyPassword}
+                className="px-3 py-1.5 rounded-lg bg-[#369D6D] hover:bg-[#107a55] text-white text-xs font-semibold cursor-pointer transition-colors inline-flex items-center gap-1"
+              >
+                {copied ? "Tersalin!" : "Salin Sandi"}
+              </button>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-1">
+            <button
+              type="button"
+              onClick={handleResetForm}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+            >
+              Tambah Pengguna Lain
+            </button>
+            <button
+              type="button"
+              onClick={onBack}
+              className="px-3.5 py-1.5 rounded-lg bg-[#369D6D] hover:bg-[#107a55] text-white text-xs font-bold transition-colors cursor-pointer shadow-2xs"
+            >
+              Kembali ke Daftar
+            </button>
+          </div>
+        </div>
+      ) : (
+        /* Create Form Card */
+        <div className="bg-white rounded-2xl border border-[#D8E6DE] p-4 sm:p-5 shadow-xs space-y-4">
+          <div className="border-b border-[#D8E6DE] pb-3">
+            <h2 className="text-sm font-bold text-slate-900">Tambah Pengguna Baru</h2>
+            <p className="text-[11px] text-[#5C6B64] mt-0.5">
+              Daftarkan akun siswa, guru, atau staf perpustakaan
+            </p>
+          </div>
+
+          {/* Information Alert */}
+          <div className="p-3 rounded-xl bg-[#E7F3EC] border border-[#D8E6DE] text-xs text-[#39BF81] flex items-start gap-2.5">
+            <svg className="w-4 h-4 text-[#39BF81] shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <p className="text-[11px] leading-relaxed text-[#39BF81]">
+              <strong>Informasi Akun:</strong> Masukkan kata sandi awal (minimal 6 karakter) untuk akun baru. Pengguna dapat memperbarui kata sandi secara mandiri setelah berhasil masuk.
+            </p>
+          </div>
+
+          {error && (
+            <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-medium flex items-center justify-between">
+              <span>{error}</span>
+              <button
+                type="button"
+                onClick={() => setError("")}
+                className="text-rose-600 font-bold hover:underline cursor-pointer"
+              >
+                Tutup
+              </button>
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-3.5">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Nama Lengkap <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="text"
+                required
+                placeholder="Contoh: Cut Fahri"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                className="w-full px-3 py-1.5 bg-white border border-[#D8E6DE] rounded-lg text-xs text-[#1A1A1A] focus:outline-none focus:border-[#39BF81] focus:ring-1 focus:ring-[#39BF81] transition-all"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Alamat Email <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="email"
+                required
+                placeholder="nama@sekolah.sch.id"
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                className="w-full px-3 py-1.5 bg-white border border-[#D8E6DE] rounded-lg text-xs text-[#1A1A1A] focus:outline-none focus:border-[#39BF81] focus:ring-1 focus:ring-[#39BF81] transition-all"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Peran (Role) <span className="text-rose-500">*</span>
+                </label>
+                <CustomSelect
+                  value={formData.role}
+                  onChange={(val) => handleRoleChange(val)}
+                  options={[
+                    { value: "siswa", label: "Siswa" },
+                    { value: "guru", label: "Guru (Wali Kelas)" },
+                    { value: "admin", label: "Administrator" },
+                  ]}
+                  className="w-full"
+                  fullWidthMenu={true}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  {formData.role === "guru"
+                    ? "Wali Kelas (1 Guru per Kelas)"
+                    : formData.role === "admin"
+                    ? "Tingkat Akses"
+                    : "Kelas"}
+                </label>
+
+                {formData.role === "admin" ? (
+                  <input
+                    type="text"
+                    disabled
+                    value="Seluruh Tingkatan (Admin)"
+                    className="w-full px-3 py-1.5 bg-slate-50 border border-[#D8E6DE] rounded-lg text-xs text-[#5C6B64] cursor-not-allowed"
+                  />
+                ) : (
+                  <>
+                    <CustomSelect
+                      value={formData.kelas}
+                      onChange={(val) => setFormData({ ...formData, kelas: val })}
+                      options={[
+                        { value: "", label: "-- Belum Ditugaskan (None) --" },
+                        ...[1, 2, 3, 4, 5, 6].flatMap((grade) => [
+                          { isGroupHeader: true, label: `Tingkat Kelas ${grade}` },
+                          ...["A", "B", "C", "D"].map((sub) => {
+                            const classVal = `Kelas ${grade}${sub}`;
+                            const code = `${grade}${sub}`;
+                            const wali = existingWaliMap[code];
+                            const isGuru = formData.role === "guru";
+                            const isOccupied = isGuru && Boolean(wali);
+
+                            return {
+                              value: classVal,
+                              label: `Kelas ${grade}${sub}${isOccupied ? ` (Sudah ada wali: ${wali})` : ""}`,
+                            };
+                          }),
+                        ]),
+                      ]}
+                      className="w-full"
+                      fullWidthMenu={true}
+                    />
+                    {formData.role === "guru" && (
+                      <p className="text-[10px] text-[#5C6B64] mt-1 leading-normal">
+                        * 1 kelas hanya berhak memiliki 1 wali kelas. Pilih <strong>Belum Ditugaskan (None)</strong> jika guru belum memiliki penugasan.
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Kata Sandi & Konfirmasi Kata Sandi dengan Toggle */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Kata Sandi <span className="text-rose-500">*</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    required
+                    minLength={6}
+                    placeholder="Minimal 6 karakter"
+                    value={formData.password}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    className="w-full pl-3 pr-9 py-1.5 bg-white border border-[#D8E6DE] rounded-lg text-xs text-[#1A1A1A] focus:outline-none focus:border-[#39BF81] focus:ring-1 focus:ring-[#39BF81] transition-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#5C6B64] hover:text-[#39BF81] transition-colors cursor-pointer"
+                    title={showPassword ? "Sembunyikan sandi" : "Tampilkan sandi"}
+                  >
+                    {showPassword ? (
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18" />
+                      </svg>
+                    ) : (
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Konfirmasi Kata Sandi <span className="text-rose-500">*</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type={showPasswordConfirm ? "text" : "password"}
+                    required
+                    minLength={6}
+                    placeholder="Ulangi kata sandi"
+                    value={formData.passwordConfirmation}
+                    onChange={(e) => setFormData({ ...formData, passwordConfirmation: e.target.value })}
+                    className="w-full pl-3 pr-9 py-1.5 bg-white border border-[#D8E6DE] rounded-lg text-xs text-[#1A1A1A] focus:outline-none focus:border-[#39BF81] focus:ring-1 focus:ring-[#39BF81] transition-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPasswordConfirm(!showPasswordConfirm)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#5C6B64] hover:text-[#39BF81] transition-colors cursor-pointer"
+                    title={showPasswordConfirm ? "Sembunyikan sandi" : "Tampilkan sandi"}
+                  >
+                    {showPasswordConfirm ? (
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18" />
+                      </svg>
+                    ) : (
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#D8E6DE]">
+              <button
+                type="button"
+                onClick={onBack}
+                disabled={submitting}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                disabled={submitting}
+                className="px-3.5 py-1.5 rounded-lg bg-[#369D6D] hover:bg-[#107a55] text-white text-xs font-bold transition-all cursor-pointer shadow-2xs disabled:opacity-50 inline-flex items-center gap-1.5"
+              >
+                {submitting ? "Menyimpan..." : "Simpan & Buat Akun"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+    </div>
+  );
+}
